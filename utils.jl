@@ -5,24 +5,6 @@ function parse_datetime(dt, tz)
 end
 
 
-# # Function for obtain Hankel Matrix of time-delay embeddings
-# function TimeDelayEmbedding(z; n_embedding=100, method=:forward)
-#     ncol = length(z) - n_embedding + 1
-
-#     # allocate output
-#     H = zeros(eltype(z), n_embedding, ncol)
-
-#     for k ∈ 1:ncol
-#         H[:,k] = z[k:k+n_embedding-1]
-#     end
-
-#     if method == :backward
-#         H .= H[end:-1:1, :]
-#     end
-
-#     return H
-# end
-
 
 # function r_expvar(σ; cutoff=0.9)
 #     expvar = cumsum(σ ./ sum(σ))
