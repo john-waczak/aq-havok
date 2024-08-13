@@ -1,3 +1,4 @@
 .get-sensor-data.jl
 .credentials.json
 .DS_Store
+data/full/
