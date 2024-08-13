@@ -1,4 +1,5 @@
 .get-sensor-data.jl
 .credentials.json
 .DS_Store
-data/full/
+data/valo-node*
+data/central-hub*
