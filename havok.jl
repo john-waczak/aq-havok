@@ -270,6 +270,55 @@ end
 
 
 
+function integrate_havok(Zs, ts, n_embedding, r_model, n_control, A, B, U, σ, V)
+    r = r_model + n_control
+
+    # construct Hankel Matrix
+    H = Hankel(Zs, n_embedding)
+
+    # get the current V matrix using U,σ
+    # H = UΣV'
+    # Σ⁻¹U'H = V'
+    # V = H'UΣ⁻¹
+    Vcur = H'*U*Diagonal(1 ./ σ)
+
+    # cutoff time for training vs testing partition
+    dt = ts[2]-ts[1]
+    Zs_x = H[end, :]
+    ts_x = range(ts[n_embedding], step=dt, length=length(Zs_x))
+    dt = ts_x[2]-ts_x[1]
+
+    # set up initial condition
+    v₁ = Vcur[1,1:r_model]
+
+    # pick out forcing values
+    fvals = Vcur[:,r_model+1:r]
+
+    # construct exponential matrices for time evolution
+    expA, expB = make_expM_const(A, B, dt, r_model, n_control)
+
+
+    # set up outgoing array
+    Vout = zeros(size(Vcur, 1), r_model);
+    Vout[1,:] .= v₁;
+    v_tmp = similar(v₁);
+
+    # compute time evolution
+    for i ∈ 2:size(Vout,1)
+        step_const!(v_tmp, Vout[i-1,:], fvals[i-1,:], expA, expB)
+        Vout[i,:] .= v_tmp
+    end
+
+    # reconstruct original time series
+    Ĥ = U*Diagonal(σ)*hcat(Vout, fvals)'
+    Ẑs_x = Ĥ[end,:]
+
+    return Zs_x, Ẑs_x, ts_x
+end
+
+
+
+
 
 # reconstruct!(z_emb, v_next, Uσ) = mul!(z_emb, Uσ, v_next)
 
