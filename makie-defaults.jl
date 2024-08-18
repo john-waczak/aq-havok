@@ -29,7 +29,6 @@ mints_font = (;
 mints_theme = Theme(
     fontsize=17,
     fonts = mints_font,
-    #colormap = :haline,
     colormap = :viridis,
     palette = (
         color = mints_colors,

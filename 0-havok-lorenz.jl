@@ -6,6 +6,7 @@ using Statistics, StatsBase, Distributions, KernelDensity
 
 
 include("./makie-defaults.jl")
+set_theme!(mints_theme)
 include("./havok.jl")
 
 # see https://github.com/sethhirsh/sHAVOK/blob/master/Figure%208.ipynb
@@ -85,7 +86,7 @@ ax1 = Axis(gl[1,1];
 
 ax2 = Axis(gl[1,2];
            yreversed=true,
-           title="B",
+           title="B",                  titlesize=25,             titlefont=:regular,
            xticklabelsvisible=false,   xticksvisible=false,
            xgridvisible=false,         xminorgridvisible=false,
            yticklabelsvisible=false,   yticksvisible=false,
@@ -122,7 +123,7 @@ ax1 = Axis(gl[1,1];
 
 ax2 = Axis(gl[1,2];
            yreversed=true,
-           title="B",
+           title="B",                  titlesize=25,             titlefont=:regular,
            xticklabelsvisible=false,   xticksvisible=false,
            xgridvisible=false,         xminorgridvisible=false,
            yticklabelsvisible=false,   yticksvisible=false,
@@ -158,7 +159,7 @@ ax1 = Axis(gl[1,1];
 
 ax2 = Axis(gl[1,2];
            yreversed=true,
-           title="B",
+           title="B",                  titlesize=25,             titlefont=:regular,
            xticklabelsvisible=false,   xticksvisible=false,
            xgridvisible=false,         xminorgridvisible=false,
            yticklabelsvisible=false,   yticksvisible=false,

@@ -210,13 +210,68 @@ function make_expM_linear(A, B, Δt, r_model, n_control)
 end
 
 
-
 function step_linear!(v_next, v_now, f_next, f_now, expA, expB, exp0)
     v_next .= expA*v_now + expB*f_now + exp0*(f_next .- f_now)
 end
 
 
-reconstruct!(z_emb, v_next, Uσ) = mul!(z_emb, Uσ, v_next)
+
+function eval_havok!(Zs, ts, n_embedding, r_model, n_control)
+    r = r_model + n_control
+
+    # construct Hankel Matrix
+    H = Hankel(Zs, n_embedding)
+
+    # cutoff time for training vs testing partition
+    dt = ts[2]-ts[1]
+    Zs_x = H[end, :]
+    ts_x = range(ts[n_embedding], step=dt, length=length(Zs_x))
+
+    # compute havok decomposition
+    Ξ,U,σ,V = sHAVOK(H, dt, r, 1);
+
+    # further truncate original time series to match
+    # the data in V
+    Zs_x = Zs_x[1:end-1]
+    ts_x = ts_x[1:end-1]
+
+    # select Linear and Forcing coef. Matrices
+    A = Ξ[1:r_model, 1:r_model];
+    B = Ξ[1:r_model, r_model+1:end];
+
+    # set up initial condition
+    v₁ = V[1,1:r_model]
+
+    # pick out forcing values
+    fvals = V[:,r_model+1:r]
+
+    # construct exponential matrices for time evolution
+    expA, expB = make_expM_const(A, B, dt, r_model, n_control)
+
+    # set up outgoing array
+    Vout = zeros(size(V, 1), r_model);
+    Vout[1,:] .= v₁;
+    v_tmp = similar(v₁);
+
+    # compute time evolution
+    for i ∈ 2:size(Vout,1)
+        step_const!(v_tmp, Vout[i-1,:], fvals[i-1,:], expA, expB)
+        Vout[i,:] .= v_tmp
+    end
+
+    # reconstruct original time series
+    Ĥ = U*Diagonal(σ)*hcat(Vout, fvals)'
+    # Ĥ = U[:,1:r_model]*Diagonal(σ[1:r_model])*Vout'
+    Ẑs_x = Ĥ[end,:]
+
+
+    return Zs_x, Ẑs_x, ts_x, U, σ, V, A, B
+end
+
+
+
+
+# reconstruct!(z_emb, v_next, Uσ) = mul!(z_emb, Uσ, v_next)
 
 
 # function step!(v_next, v_now, v_prev, f_now, A, B, Δt)

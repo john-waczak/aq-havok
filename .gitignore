@@ -1,5 +1,10 @@
 .get-sensor-data.jl
 .credentials.json
 .DS_Store
-data/valo-node*
-data/central-hub*
+data/valo-node-01-df.csv
+data/valo-node-01-df_summary.csv
+data/central-hub-4-df.csv
+data/central-hub-4-df_summary.csv
+data/central-hub-7-df.csv
+data/central-hub-7-df_summary.csv
+output/
