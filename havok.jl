@@ -216,7 +216,7 @@ end
 
 
 
-function eval_havok!(Zs, ts, n_embedding, r_model, n_control)
+function eval_havok(Zs, ts, n_embedding, r_model, n_control)
     r = r_model + n_control
 
     # construct Hankel Matrix
@@ -260,17 +260,15 @@ function eval_havok!(Zs, ts, n_embedding, r_model, n_control)
     end
 
     # reconstruct original time series
-    Ĥ = U*Diagonal(σ)*hcat(Vout, fvals)'
-    # Ĥ = U[:,1:r_model]*Diagonal(σ[1:r_model])*Vout'
+    # Ĥ = U*Diagonal(σ)*hcat(Vout, fvals)'
+    Ĥ = U[:,1:r_model]*Diagonal(σ[1:r_model])*Vout'
     Ẑs_x = Ĥ[end,:]
 
-
-    return Zs_x, Ẑs_x, ts_x, U, σ, V, A, B
+    return Zs_x, Ẑs_x, ts_x, U, σ, Vout, A, B, fvals
 end
 
 
-
-function integrate_havok(Zs, ts, n_embedding, r_model, n_control, A, B, U, σ, V)
+function integrate_havok(Zs, ts, n_embedding, r_model, n_control, A, B, U, σ)
     r = r_model + n_control
 
     # construct Hankel Matrix
@@ -286,7 +284,6 @@ function integrate_havok(Zs, ts, n_embedding, r_model, n_control, A, B, U, σ, V
     dt = ts[2]-ts[1]
     Zs_x = H[end, :]
     ts_x = range(ts[n_embedding], step=dt, length=length(Zs_x))
-    dt = ts_x[2]-ts_x[1]
 
     # set up initial condition
     v₁ = Vcur[1,1:r_model]
@@ -310,12 +307,66 @@ function integrate_havok(Zs, ts, n_embedding, r_model, n_control, A, B, U, σ, V
     end
 
     # reconstruct original time series
+    # Ĥ = U*Diagonal(σ)*hcat(Vout, fvals)'
     Ĥ = U*Diagonal(σ)*hcat(Vout, fvals)'
+    Ĥ = U[:,1:r_model]*Diagonal(σ[1:r_model])*Vout'
     Ẑs_x = Ĥ[end,:]
 
     return Zs_x, Ẑs_x, ts_x
 end
 
+
+
+
+function forecast_havok(Zs, ts, n_embedding, r_model, n_control, A, B, U, σ)
+    dt = ts[2]-ts[1]
+
+    r = r_model + n_control
+
+    # get first embedding vector for time delay
+    V_0 = Diagonal(1 ./ σ)*U'*Zs[1:n_embedding]
+
+    # set up initial condition
+    v_prev = V_0[1:r_model]
+    f_prev = V_0[r_model+1:r]
+
+    # construct exponential matrices for time evolution
+    expA, expB = make_expM_const(A, B, dt, r_model, n_control)
+
+
+    # set up outgoing array
+    v_curr = similar(v_prev);      # for updating state
+    f_curr = similar(f_prev);      # for updating forcing
+
+    # set up outgoing array for time series predictions
+    Zs_out = zeros(length(Zs))
+    Zs_out[1:n_embedding] .= Zs[1:n_embedding]
+
+    # pre-compute this for re-use
+    σu = σ[1:r_model] .* U[end,1:r_model]
+    ΣinvUt = Diagonal(1 ./ σ[r_model+1:r]) * U[:, r_model+1:r]'
+
+    # compute time evolution
+    for i ∈ n_embedding+1:length(Zs)
+        # step the model forward
+        step_const!(v_curr, v_prev, f_prev, expA, expB)
+
+        # update the state
+        v_prev .= v_curr
+
+        # update next time series value
+        Zs_out[i] = dot(σu, v_curr)
+
+        # use state to estimate forcing
+        # mul!(f_curr, ΣinvUt, Zs_out[i-n_embedding+1:i])
+        f_curr =  ΣinvUt * Zs_out[i-n_embedding+1:i]
+
+        # update forcing
+        f_prev = f_curr
+    end
+
+    return Zs_out
+end
 
 
 

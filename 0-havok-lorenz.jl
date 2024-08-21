@@ -228,8 +228,6 @@ fig
 save(joinpath(figpath, "2b_lorenz-attractor.pdf"), fig)
 
 
-
-
 # set up data for fitting HAVOK model
 r_model = 14
 n_control = 1
@@ -241,63 +239,36 @@ ts
 n_embedding = 201
 # n_embedding = 100
 
-# cut off timeseries
-Zs_x = Zs[n_embedding:end]
-ts_x = range(ts[n_embedding], step=dt, length=length(Zs_x))
-H = Hankel(Zs, n_embedding);
-
-# construct Hankel Matrix
-Ξ,U,σ,V = sHAVOK(H, dt, r, 1);
-A = Ξ[1:r_model, 1:r_model];
-B = Ξ[1:r_model, r_model+1:end];
-
-v₁ = V[1,1:r_model]
-fvals = V[:,r_model+1:r]
-
-# construct exponential matrices for time evolution
-expA, expB = make_expM_const(A, B, dt, r_model, n_control)
-
-# set up outgoing array
-Vout = zeros(size(V, 1), r_model);
-Vout[1,:] .= v₁;
-v_tmp = similar(v₁);
-for i ∈ 2:size(Vout,1)
-    step_const!(v_tmp, Vout[i-1,:], fvals[i-1,:], expA, expB)
-    Vout[i,:] .= v_tmp
-end
-
-ts_plot = ts_x[L]
+Zs_x, Ẑs_x, ts_x, U, σ, Vout, A, B, fvals = eval_havok(Zs, ts, n_embedding, r_model, n_control)
 
 
-# fig = Figure();
-# ax = CairoMakie.Axis(fig[1,1]);
-# lines!(ax, ts_plot, V[L,1])
-# lines!(ax, ts_plot, Vout[L,1])
-# # xlims!(ax, ts_plot[1], 3)
-# fig
 
+# # cut off timeseries
+# Zs_x = Zs[n_embedding:end]
+# ts_x = range(ts[n_embedding], step=dt, length=length(Zs_x))
+# H = Hankel(Zs, n_embedding);
 
-# # linear version
-# expA, expB, exp0 = make_expM_linear(A, B, dt, r_model, n_control)
+# # construct Hankel Matrix
+# Ξ,U,σ,V = sHAVOK(H, dt, r, 1);
+# A = Ξ[1:r_model, 1:r_model];
+# B = Ξ[1:r_model, r_model+1:end];
+
+# v₁ = V[1,1:r_model]
+# fvals = V[:,r_model+1:r]
+
+# # construct exponential matrices for time evolution
+# expA, expB = make_expM_const(A, B, dt, r_model, n_control)
+
+# # set up outgoing array
 # Vout = zeros(size(V, 1), r_model);
 # Vout[1,:] .= v₁;
 # v_tmp = similar(v₁);
-
-# expA*v_tmp + expB*fvals[1] + exp0*(fvals[2]-fvals[1])
-
 # for i ∈ 2:size(Vout,1)
-#     Vout[i,:] .= expA*Vout[i-1,:] + expB*fvals[i-1,:] + exp0*(fvals[i,:]-fvals[i-1,:])
+#     step_const!(v_tmp, Vout[i-1,:], fvals[i-1,:], expA, expB)
+#     Vout[i,:] .= v_tmp
 # end
 
-
-# ts_plot = ts_x[L]
-
-# fig = Figure();
-# ax = CairoMakie.Axis(fig[1,1]);
-# lines!(ax, ts_plot, V[L,1])
-# lines!(ax, ts_plot, Vout[L,1])
-# fig
-
+ts_plot = ts_x[L]
 
 
 # visualize time-series
@@ -463,9 +434,6 @@ save(joinpath(figpath, "8__attractor-w-forcing.png"), fig, px_per_unit=3)
 
 
 # reconstruct original time-series
-size(Vout)
-
-
 Ĥ = U[:,1:r]*diagm(σ[1:r])*hcat(Vout, fvals)'
 
 Zs_x
