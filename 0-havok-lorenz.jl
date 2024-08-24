@@ -5,6 +5,8 @@ using CairoMakie
 using Statistics, StatsBase, Distributions, KernelDensity
 
 
+
+
 include("./makie-defaults.jl")
 set_theme!(mints_theme)
 include("./havok.jl")
@@ -58,19 +60,22 @@ sol = solve(prob, DP5(), saveat=ts, abstol=1e-12, reltol=1e-12);
 Data = Array(sol)
 
 # use only the x-component as our measurement for HAVOK
-Z = Data[1,:]
+Zs = Data[1,:]
 ts
-rows = 201
-H = Hankel(Z, rows)
-r = 15
+n_embedding = 201
+r_model = 14
+n_control = 1
+r = r_model + n_control
+
+H = Hankel(Zs, n_embedding)
 
 # visualize the learned operators for HAVOK and sHAVOK
 cmap = cgrad([mints_colors[3], colorant"#FFFFFF", mints_colors[2]], 100)
 crange = (-10, 10)
 
 Ξh,_,_,_ = HAVOK(H, dt, r, 1)
-Ah = Ξh[1:r-1, 1:r-1]
-Bh = Ξh[1:r-1, r:r]
+Ah = Ξh[1:r_model, 1:r_model]
+Bh = Ξh[1:r_model, r_model+1:r]
 
 
 fig = Figure();
@@ -106,8 +111,8 @@ save(joinpath(figpath, "1__A-B-Havok.pdf"), fig)
 
 
 Ξs,_,_,_ = sHAVOK(H, dt, r, 1)
-As = Ξs[1:r-1, 1:r-1]
-Bs = Ξs[1:r-1, r:r]
+As = Ξs[1:r_model, 1:r_model]
+Bs = Ξs[1:r_model, r_model+1:r]
 
 
 fig = Figure();
@@ -143,8 +148,8 @@ save(joinpath(figpath, "1b_A-B-sHavok.pdf"), fig)
 
 
 Ξ,_,_,_ = sHAVOK_central(H, dt, r, 1)
-A = Ξs[1:r-1, 1:r-1]
-B = Ξs[1:r-1, r:r]
+A = Ξs[1:r_model, 1:r_model]
+B = Ξs[1:r_model, r_model+1:r]
 
 fig = Figure();
 gl = fig[1,1:2] = GridLayout()
@@ -184,12 +189,10 @@ save(joinpath(figpath, "1c_A-B-sHavok-central.pdf"), fig)
 #  Integrating the ODE System
 # --------------------------------
 ts = range(0, step=dt, stop=200)
-# ts = range(0, step=dt, length=50000)
-# ts = range(0, step=dt, length=3000)
 prob = ODEProblem(lorenz!, u0, (ts[1], ts[end]), p)
 sol = solve(prob, DP5(), saveat=ts, abstol=1e-12, reltol=1e-12);
 Data = Array(sol)'
-Z = Data[:,1]
+Zs = Data[:,1]
 
 fig = Figure();
 ga = fig[1,1] = GridLayout();
@@ -229,6 +232,7 @@ save(joinpath(figpath, "2b_lorenz-attractor.pdf"), fig)
 
 
 # set up data for fitting HAVOK model
+n_embedding = 201
 r_model = 14
 n_control = 1
 r = r_model + n_control
@@ -236,37 +240,11 @@ r = r_model + n_control
 # generate timeseries
 Zs = Data[:,1]
 ts
-n_embedding = 201
-# n_embedding = 100
 
 Zs_x, Ẑs_x, ts_x, U, σ, Vout, A, B, fvals = eval_havok(Zs, ts, n_embedding, r_model, n_control)
 
-
-
-# # cut off timeseries
-# Zs_x = Zs[n_embedding:end]
-# ts_x = range(ts[n_embedding], step=dt, length=length(Zs_x))
-# H = Hankel(Zs, n_embedding);
-
-# # construct Hankel Matrix
-# Ξ,U,σ,V = sHAVOK(H, dt, r, 1);
-# A = Ξ[1:r_model, 1:r_model];
-# B = Ξ[1:r_model, r_model+1:end];
-
-# v₁ = V[1,1:r_model]
-# fvals = V[:,r_model+1:r]
-
-# # construct exponential matrices for time evolution
-# expA, expB = make_expM_const(A, B, dt, r_model, n_control)
-
-# # set up outgoing array
-# Vout = zeros(size(V, 1), r_model);
-# Vout[1,:] .= v₁;
-# v_tmp = similar(v₁);
-# for i ∈ 2:size(Vout,1)
-#     step_const!(v_tmp, Vout[i-1,:], fvals[i-1,:], expA, expB)
-#     Vout[i,:] .= v_tmp
-# end
+H = Hankel(Zs, n_embedding)
+V = H'*U*Diagonal(1 ./ σ)
 
 ts_plot = ts_x[L]
 
@@ -345,14 +323,32 @@ fig
 
 
 
+
+
+# identify forcing active vs not active
+thresh = 5e-6
+forcing_active = zeros(size(fvals, 1))
+idx_high = findall(fvals[:,1] .^ 2 .≥thresh)
+win = 500  # max window size to consider forcing
+
+forcing_active[idx_high] .= 1
+
+for i ∈ 2:length(idx_high)
+    if idx_high[i] - idx_high[i-1] ≤ win
+        forcing_active[idx_high[i-1]:idx_high[i]] .= 1
+    end
+end
+
+lcolor = [fa == 1 ? mints_colors[2] : mints_colors[1] for fa ∈ forcing_active]
+
 fig = Figure();
 gl = fig[1:2,1] = GridLayout();
 ax = Axis(gl[1,1], ylabel="v₁", xticksvisible=false, xticklabelsvisible=false);
 ax2 = Axis(gl[2,1], ylabel="|vᵣ|²", xlabel="time");
 linkxaxes!(ax,ax2);
 
-l1 = lines!(ax, ts_plot, V[L,1], linewidth=3)
-l2 = lines!(ax2, ts_plot, fvals[L,1].^2, linewidth=3, color=mints_colors[2])
+l1 = lines!(ax, ts_plot, V[L,1], color=lcolor[L], linewidth=3)
+l2 = lines!(ax2, ts_plot, fvals[L,1].^2, linewidth=3, color=lcolor[L])
 
 rowsize!(gl, 2, Relative(0.2));
 xlims!(ax2, ts_plot[1], ts_plot[end])
@@ -387,9 +383,6 @@ save(joinpath(figpath, "6__forcing-statistics.pdf"), fig)
 
 
 # Compute indices where forcing is active
-thresh = 4.0e-6
-cmap_forcing = cgrad([mints_colors[3], mints_colors[2]], 10,)
-
 fig = Figure();
 ga = fig[1,1] = GridLayout();
 ax1 = Axis(ga[1,1], ylabel="v₁", xticklabelsvisible=false, xticksvisible=false)
@@ -398,14 +391,13 @@ ax3 = Axis(ga[3,1], xlabel="time", ylabel="v₃")
 
 linkxaxes!(ax1,ax2,ax3)
 
-lt = lines!(ax1, ts_plot, V[L,1], color=abs2.(V[L,r_model+1]), colormap=cmap_forcing, colorrange=(0, thresh), highclip=mints_colors[2])
-lines!(ax2, ts_plot, V[L,2], color=abs2.(V[L,r_model+1]), colormap=cmap_forcing, colorrange=(0, thresh), highclip=mints_colors[2])
-lines!(ax3, ts_plot, V[L,3], color=abs2.(V[L,r_model+1]), colormap=cmap_forcing, colorrange=(0, thresh), highclip=mints_colors[2])
-
+lt = lines!(ax1, ts_plot, V[L,1], color=lcolor[L])
+lines!(ax2, ts_plot, V[L,2], color=lcolor[L])
+lines!(ax3, ts_plot, V[L,3], color=lcolor[L])
 xlims!(ax3, ts_plot[1], ts_plot[end])
 rowgap!(ga, 5)
 
-cb = Colorbar(fig[1,2], lt, ticks=([0, 1e-6, 2e-6, 3e-6, 4e-6], ["0", "1", "2", "3", "4"]), label=rich("Forcing |v", subscript("r"), "|²   ", rich("(×10", superscript("-6"), ")", fontsize=9)))
+# cb = Colorbar(fig[1,2], lt, ticks=([0, 1e-6, 2e-6, 3e-6, 4e-6], ["0", "1", "2", "3", "4"]), label=rich("Forcing |v", subscript("r"), "|²   ", rich("(×10", superscript("-6"), ")", fontsize=9)))
 
 fig
 
@@ -424,12 +416,11 @@ ax = Axis3(
 hidespines!(ax)
 hidedecorations!(ax)
 
-lines!(ax, Data[L .+ n_embedding,1], Data[L .+ n_embedding,2], Data[L .+ n_embedding,3], color=abs2.(V[L, r_model+1]), colormap=cmap_forcing, colorrange=(0, thresh), highclip=mints_colors[2])
+lines!(ax, Data[L .+ n_embedding,1], Data[L .+ n_embedding,2], Data[L .+ n_embedding,3], color=lcolor[L])
 
 fig
 
 save(joinpath(figpath, "8__attractor-w-forcing.png"), fig, px_per_unit=3)
-
 
 
 
@@ -454,4 +445,53 @@ save(joinpath(figpath, "9__timeseries-reconstruction.pdf"), fig)
 
 
 
+# Plot original time series with forcing
+fig = Figure();
+gl = fig[1:2,1] = GridLayout();
+ax = Axis(gl[1,1], ylabel="x(t)", xticksvisible=false, xticklabelsvisible=false);
+ax2 = Axis(gl[2,1], ylabel="|vᵣ|²", xlabel="time");
+linkxaxes!(ax,ax2);
+
+l_orig = lines!(ax, ts_x[L], Zs_x[L], color=lcolor[L])
+l2 = lines!(ax2, ts_plot, fvals[L,1].^2, linewidth=3, color=lcolor[L])
+
+rowsize!(gl, 2, Relative(0.2));
+xlims!(ax2, ts_plot[1], ts_plot[end])
+
+fig
+
+save(joinpath(figpath, "10__og-timeseries-w-forcing.pdf"), fig)
+
+
+
+
+
+# Now let's see if we can build a model for the forcing function
+
+# visualize the forcing by itself as a single time series
+fig = Figure();
+ax = Axis(fig[1,1], xlabel="t", ylabel="vᵣ(t)", title="⟨vᵣ⟩ = $(round(mean(fvals[L,1]), sigdigits=3))", titlealign=:right, titlefont=:regular, titlesize=13);
+lines!(ax, ts_plot, fvals[L,1], color=mints_colors[3])
+xlims!(ax, ts_plot[1], ts_plot[end])
+fig
+
+save(joinpath(figpath, "11__forcing-timeseries-w-mean.pdf"), fig)
+
+
+# okay so it's cleary "mostly" zero centered so we can probably do a decent job of forecasting the forcing function
+
+# start with using the same length of embedding as the time series
+
+# K, b, f_train, f̂_train, f_test, f̂_test = forcing_model(fvals, n_embedding, n_control)
+K, f_train, f̂_train, f_test, f̂_test = forcing_model(fvals, n_embedding, n_control)
+
+
+# visualize scatter diagram of fit
+fig = scatter_results(
+    f_train[:], f̂_train[:],
+    f_test[:], f̂_test[:],
+    "vᵣ"
+)
+
+save(joinpath(figpath, "12__forcing-model-fit.png"), fig; px_per_unit=2)
 

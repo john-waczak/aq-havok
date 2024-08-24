@@ -26,65 +26,173 @@ end
 
 df_params = CSV.read("./output/1-havok-pm/param_sweep.csv", DataFrame);
 
-dur = "7_day"
-sort(df_params[df_params.duration .== dur, [:r_model, :n_control, :n_embedding, :rmse, :mae]], :rmse)
-sort(df_params[df_params.duration .== dur .&& df_params.n_control .== 1, [:r_model, :n_control, :n_embedding, :rmse, :mae]], :rmse)
+names(df_params)
+
+sort(df_params[df_params.r_model.== 5,:], :rmse_7_day)[:, [:n_embedding, :r_model, :n_control, :rmse_7_day, :mae_7_day]]
+
 
 
 # so the options appear to be (7,5,30) and (7,1,165)
 
 # Load in data
-datapath = "./data/df-v1.csv"
+datapath = "./data/df-polo-node-21.csv"  # UT Dallas ECSN
 
 df = CSV.read(datapath, DataFrame);
 df.datetime .= ZonedDateTime.(String.(df.datetime));
-dt_start = df.datetime[1]
 
-t_days = df.dt ./ (60*60*24)
+col_to_use = :pm2_5
+Zs = df[:, col_to_use]
+datetimes = df.datetime
+ts = df.dt
+ts = ts .+ minute(df.datetime[1])
+t_days = ts ./ (24*60*60)
+d_start = Date(datetimes[1])
 
 
-# set up the data
-ts = df.dt .- df.dt[1]
-dt = ts[2]-ts[1]
+idx_train = findall(t_days .≤ 21)
+idx_test = findall(t_days .> 21 .&& t_days .≤ 28)
 
-idx_train = findall(t_days .≤ 7)
-idx_test = findall(t_days .> 7 .&& t_days .≤ 14)
+# idx_train = findall(t_days .≤ 7)
+# idx_test = findall(t_days .> 7 .&& t_days .≤ 14)
 
-idx_full = findall(t_days .≤ 14)
-ts_full = ts[idx_full]
 
-Zs_test = Array(df[idx_test, :pm2_5])
+
+Zs_train = Zs[idx_train]
+ts_train = ts[idx_train]
+t_days_train = t_days[idx_train]
+
+Zs_test = Zs[idx_test]
 ts_test = ts[idx_test]
-
-Zs = Array(df[idx_train, :pm2_5])
-ts = ts[idx_train]
+t_days_test = t_days[idx_test]
 
 
 # visualize the results for the final model:
-n_embedding = 90
-r_model = 5
-n_control = 1
-r = r_model + n_control
-
-# n_embedding = 165
-# r_model = 7
+# n_embedding = 90
+# r_model = 5
 # n_control = 1
 
+# n_embedding = 90
+# r_model = 5
+# n_control = 1
+
+
+n_embedding = 105
+r_model = 17
+n_control = 15
 r = r_model + n_control
 
+
+
+
 # test out the HAVOK code
-Zs_x, Ẑs_x, ts_x, U, σ, V, A, B, fvals = eval_havok(Zs, ts, n_embedding, r_model, n_control)
-Zs_x_test, Ẑs_x_test, ts_x_test = integrate_havok(Zs_test, ts_test, n_embedding, r_model, n_control, A, B, U, σ)
+Zs_x, Ẑs_x, ts_x, U, σ, V, A, B, fvals = eval_havok(Zs_train, ts_train, n_embedding, r_model, n_control)
+
+
+# fig = Figure();
+# ax = Axis(fig[1,1]);
+# lines!(ax, ts_x, Zs_x)
+# lines!(ax, ts_x, Ẑs_x)
+# fig
+
+
+# set up integration
+Zs_train
+ts_train
+n_embedding
+r_model
+n_control
+
+# using U, σ, create function to map time series embedding z ↦ v
+H = Hankel(Zs_train, n_embedding)
+z₀ = Zs_train[1:n_embedding]
+@assert all(H[:,1] .== z₀)
+
+f₀ = fvals[1,:]
+
+Σ = Diagonal(σ)
+invΣ = Diagonal(1 ./ σ)
+
+v₀ = get_v_from_z(z₀, invΣ, U)
+
+@assert all(V[1,:] .≈ v₀[1:r_model])
+@assert all(v₀[r_model+1:r] .≈ f₀)
+
+
+z₀[end]
+get_z_from_v(v₀, Σ, U, r_model)[end]
+get_z_from_v_and_f(v₀[1:r_model], f₀, Σ, U, r)[end]
+
+# now let's test a step
+z₁ = Zs_train[2:n_embedding+1]
+
+Δt = ts_train[2] - ts_train[1]
+expA, expB = make_expM_const(A, B, Δt, r_model, n_control)
+
+v_pred = similar(v₀[1:r_model]);
+
+# take a step
+size(v_pred)
+step_const!(v_pred, v₀[1:r_model], f₀, expA, expB)
+
+# now use v_pred to convert back to the time series
+z_pred = get_z_from_v(v_pred, Σ, U, r_model)
+
+z₁[end]
+z_pred[end]
+
+# now get the embedding and check against next forcing value
+v_new = get_v_from_z(z_pred, invΣ, U)
+
+v_new[r_model+1:r]
+
+z₁_test = copy(z₁)
+z₁_test[end] = z₁[end]*1.005
+
+
+fvals[2,:]
+get_v_from_z(z₁, invΣ, U)[r_model+1:r]
+get_v_from_z(z₁_test, invΣ, U)[r_model+1:r]
+
+
+
+# create time delay veaturs for F model
+F = Hankel(fvals[:,1], n_embedding)
+f = F[end,:]
+
+F = F[:, 1:end-1]
+f_next = f[2:end]
+@assert F[end,2] == f_next[1]
+
+# f_next = Af_now + b
+size(F)
+
+# f_next = Ab * vcat(F, ones(1, size(F, 2)))
+
+Ab = f_next' /  vcat(F, ones(1, size(F, 2)))
+Af = Ab[1:end-1]
+bf = Ab[end]
+
+
+
+size(Af)
+size(F)
+
+extrema(f_next .- F'*Af .+ bf)
+
+isapprox(f_next, F'*Af .+ bf, rtol=1e-2)
+
+
+
 
 # visualize the fitted time series
 c_dgray = colorant"#3d3d3d"
 c_dgray = colorant"#737373"
 fig = Figure();
 ax = Axis(fig[2,1],
-          xlabel="time (days since $(Date(dt_start)))",
+          xlabel="time (days since $(Date(d_start)))",
           ylabel="PM 2.5 (μg/m³)",
-          xticks=(0:1:15),
-          yticks=(0:5:50),
+          xticks=(0:1:50),
+          yticks=(-5:5:80),
           xminorgridvisible=true,
           yminorgridvisible=true,
           );
@@ -94,7 +202,7 @@ text!(fig.scene, 0.1, 0.93, text="Training Data", space=:relative, fontsize=15)
 lorig= lines!(ax, ts_x ./ (24*60*60), Zs_x, color=c_dgray, linewidth=2)
 lhavok= lines!(ax, ts_x ./ (24*60*60), Ẑs_x, color=mints_colors[3], alpha=0.65, linewidth=1)
 xlims!(ax, ts_x[1] / (24*60*60), ts_x[end] / (24*60*60))
-ylims!(ax, 0, nothing)
+# ylims!(ax, 0, nothing)
 fig[1,1] = Legend(fig, [lorig, lhavok], ["Original", "HAVOK"], framevisible=false, orientation=:horizontal, padding=(0,0,-18,0), labelsize=14, height=-5, halign=:right)
 fig
 
@@ -106,10 +214,10 @@ c_dgray = colorant"#3d3d3d"
 c_dgray = colorant"#737373"
 fig = Figure();
 ax = Axis(fig[2,1],
-          xlabel="time (days since $(Date(dt_start)))",
+          xlabel="time (days since $(Date(d_start)))",
           ylabel="PM 2.5 (μg/m³)",
-          xticks=(0:1:15),
-          yticks=(0:5:50),
+          xticks=(0:1:50),
+          yticks=(0:5:80),
           xminorgridvisible=true,
           yminorgridvisible=true,
           );
@@ -455,10 +563,62 @@ save(joinpath(figpath, "8__integrating-later-t0.pdf"), fig)
 # So the moral of the story seems to be that the model is stable regardless of where we start the integration, e.g. it's not errors accumulating.
 
 
-# Try to train model including NO forcing or Single forcing term
-
 # Separately predict the forcing function
+fig = Figure();
+ax = Axis(fig[1,1],
+          xlabel="time (hours)",
+          ylabel="vᵣ(t)",
+          title="Mean value = $(round(mean(fvals), sigdigits=3))",
+          titlefont=:regular,
+          titlealign=:right,
+          titlesize=14,
+          #xticks=(0:1:15),
+          #yticks=(0:5:50),
+          xminorgridvisible=true,
+          yminorgridvisible=true,
+          );
+
+
+lorig= lines!(ax, ts_x ./ (60*60), fvals[:,1], color=mints_colors[3], linewidth=1)
+xlims!(ax, 0, 6)
+ylims!(ax, -0.015, 0.015)
+
+fig
+
+save(joinpath(figpath, "9__forcing-zoomed-in.pdf"), fig)
 
 
 
+# f_next = f_now + Az_now*Δt
+Zs
+ts
+H = Hankel(Zs, n_embedding)[:, 1:end-1]
+Δt = ts[2] - ts[1]
 
+fs_now = fvals[1:end-1,:]
+fs_next = fvals[2:end,:]
+H_now = H[:, 1:end-1]
+
+size(fs_next)
+size(H_now)
+
+
+# AX = B --> X = A\B
+# A = XB --> X = A / B
+
+(fs_next .- fs_now)' ./ Δt = FH_now
+
+F = (fs_next .- fs_now)'/H_now
+
+
+size(F)
+size(H)
+
+f̂s_next = fs_now' + Δt*(F*H_now)
+f̂s_next = f̂s_next'
+
+
+rmse(f̂s_next, fs_next)
+
+mean(f̂s_next)
+mean(fs_next)

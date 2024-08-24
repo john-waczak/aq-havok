@@ -27,188 +27,201 @@ end
 
 
 # Load in data
-datapath = "./data/df-v1.csv"  # IQHQ
-# datapath = "./data/df-4.csv"   # Plano Sensor
-# datapath = "./data/df-7.csv"   # Joppa Hull Av Sensor
+readdir("./data")
+#datapath = "./data/df-polo-node-21.csv"  # UT Dallas ECSN
+# datapath = "./data/df-valo-node-01.csv"  # IQHQ
+# datapath = "./data/df-valo-node-04.csv"  # Bedford
+# datapath = "./data/df-polo-node-23.csv"
+
+datapath = "./data/df-central-hub-9.csv"  # Paul Quinn
+
 
 df = CSV.read(datapath, DataFrame);
 df.datetime .= ZonedDateTime.(String.(df.datetime));
-dt_start = df.datetime[1]
 
-t_days = df.dt ./ (60*60*24)
-
-# set up the data
-ts = df.dt .- df.dt[1]
-dt = ts[2]-ts[1]
-
-idx_train = findall(t_days .≤ 7)
-idx_test = findall(t_days .> 7 .&& t_days .≤ 14)
-
-idx_full = findall(t_days .≤ 14)
-ts_full = ts[idx_full]
-
-Zs_test = Array(df[idx_test, :pm2_5])
-ts_test = ts[idx_test]
-
-Zs = Array(df[idx_train, :pm2_5])
-ts = ts[idx_train]
+col_to_use = :pm2_5
+Zs = df[:, col_to_use]
 
 
-df.datetime[1]
+# findall(Zs .== 0.0)
 
-# idx_train = findall(t_days .≤ 7)
-# idx_test = findall(t_days .> 7 .&& t_days .≤ 14)
+datetimes = df.datetime
+ts = df.dt
+ts = ts .+ minute(df.datetime[1])
+t_days = ts ./ (24*60*60)
+d_start = Date(datetimes[1])
 
-# idx_full = findall(t_days .≤ 14)
-# ts_full = ts[idx_full]
+t_days[end]
 
-# Zs_test = Array(df[idx_test, :pm2_5])
-# ts_test = ts[idx_test]
-
-# Zs = Array(df[idx_train, :pm2_5])
-# ts = ts[idx_train]
-
+# Visualize all of the data as a single time series, alternating colors
+# Between gaps
 fig = Figure();
-ax = Axis(fig[2,1],
-          xlabel="time (days since $(Date(dt_start)))",
+ax = Axis(fig[1,1],
+          xlabel="time (days since $(Date(d_start)))",
           ylabel="PM 2.5 (μg/m³)",
-          xticks=(0:1:28),
-          #yticks=(0:5:50),
+          xticks=(0:1:100),
+          #yticks=(0:5:55),
           xminorgridvisible=true,
           yminorgridvisible=true,
           );
 
-ltrain = lines!(ax, t_days[idx_train], Zs, color=mints_colors[3])
-ltest = lines!(ax, t_days[idx_test], Zs_test, color=mints_colors[2])
-xlims!(ax, t_days[1], t_days[idx_test[end]])
-ylims!(ax, 0, nothing)
-fig[1,1] = Legend(fig, [ltrain, ltest], ["Training Data", "Testing Data"], framevisible=false, orientation=:horizontal, padding=(0,0,-18,0), labelsize=14, height=-5, halign=:right)
+lines!(ax, t_days, Zs, color=mints_colors[3])
+xlims!(ax, t_days[1], t_days[end])
+#ylims!(ax, -0.1, 50)
 fig
 
-save(joinpath(figpath, "0__timeseries-pm.pdf"), fig)
+save(joinpath(figpath, "0__timeseries-full.pdf"), fig)
 
-# temp = df.temperature[idx_full]
-# rh = df.humidity[idx_full]
-# dewpoint = temp .- (100 .- rh)./5
 
-# fig = Figure();
-# ax = Axis(fig[1,1]);
-# lines!(t_days[idx_full], temp .- dewpoint)
-# fig
+# so split the final set int t_days .≥ 40 for the testing set...
 
+idx_train = findall(t_days .≤ 7)
+idx_test = findall(t_days .> 7 .&& t_days .≤ 14)
+
+Zs_train = Zs[idx_train]
+ts_train = ts[idx_train]
+t_days_train = t_days[idx_train]
+
+Zs_test = Zs[idx_test]
+ts_test = ts[idx_test]
+t_days_test = t_days[idx_test]
+
+
+fig = Figure();
+ax = Axis(fig[2,1],
+          xlabel="time (days since $(Date(d_start)))",
+          ylabel="PM 2.5 (μg/m³)",
+          xticks=(0:1:15),
+          yticks=(0:5:50),
+          xminorgridvisible=true,
+          yminorgridvisible=true,
+          );
+
+ltrain = lines!(ax, t_days_train, Zs_train, color=mints_colors[3])
+ltest = lines!(ax, t_days_test, Zs_test, color=mints_colors[2])
+fig[1,1] = Legend(fig, [ltrain, ltest], ["Training Data", "Testing Data"], framevisible=false, orientation=:horizontal, padding=(0,0,-18,0), labelsize=14, height=-5, halign=:right)
+xlims!(ax, t_days_train[1], t_days_test[end])
+#ylims!(ax, -0.1, 50)
+fig
+
+save(joinpath(figpath, "0b__train-test-timeseries.pdf"), fig)
 
 # Evaluate sHAVOK for parameter sweep
-n_embeddings = 30:15:(5*60)
-rs_model = 3:50
-# ns_control = 1:5
-# ns_control = 1:10
-ns_control = 1:1
+Δt = ts_train[2] - ts_train[1]
 
-println("N models: ", length(n_embeddings)*length(rs_model)*length(ns_control))
+n_embeddings = 30:15:120
+rs_model = 3:40
+ns_control = 0:15
 
 
-# duration, mean_bias, mae, mean_bias_norm, mae-norm, rmse, corr_coef, coe, r2
+triples = [(n_emb, r_mod, n_con) for n_emb ∈ n_embeddings for r_mod ∈ rs_model for n_con ∈ ns_control if n_con < r_mod && r_mod+n_con < n_emb]
+
+println("N models: ", length(triples))
 eval_res = []
-for i ∈ 1:length(rs_model)
-    r_model = rs_model[i]
-    for j ∈ 1:length(ns_control)
-        n_control = ns_control[j]
-        println("r: ", r_model, "\tn: ", n_control)
-        @showprogress for k ∈ 1:length(n_embeddings)
-            n_embedding = n_embeddings[k]
-            if n_control < r_model &&  r_model + n_control ≤ n_embedding
-                Zs_x, Ẑs_x, ts_x, U, σ, Vout, A, B, fvals = eval_havok(Zs, ts, n_embedding, r_model, n_control)
-                Zs_x_test, Ẑs_x_test, ts_x_test = integrate_havok(Zs_test, ts_test, n_embedding, r_model, n_control, A, B, U, σ)
-                ts_x_test = ts_x_test .- ts_x_test[1]
 
+# @showprogress for k ∈ 1:length(n_embeddings)
+@showprogress for triple ∈ triples
+    n_embedding, r_model, n_control = triple
 
-                durations = Dict(
-                    "1_hr"  => findall(ts_x./(60*60) .≤ 1),
-                    "12_hr" => findall(ts_x./(60*60) .≤ 12),
-                    "1_day" => findall(ts_x./(60*60) .≤ 24),
-                    "2_day" => findall(ts_x./(60*60) .≤ 2*24),
-                    "3_day" => findall(ts_x./(60*60) .≤ 3*24),
-                    "4_day" => findall(ts_x./(60*60) .≤ 4*24),
-                    "5_day" => findall(ts_x./(60*60) .≤ 5*24),
-                    "6_day" => findall(ts_x./(60*60) .≤ 6*24),
-                    "7_day" => findall(ts_x./(60*60) .≤ 7*24),
-                )
+    Zs_x, Ẑs_x, ts_x, U, σ, _, A, B, _ = eval_havok(Zs_train, ts_train, n_embedding, r_model, n_control)
+    # Zs_x, Ẑs_x, ts_x = integrate_havok(Zs_test, ts_test, n_embedding, r_model, n_control, A, B, U, σ)
+    ts_x = ts_x .- ts_x[1]
 
-                durations_test = Dict(
-                    "1_hr"  => findall(ts_x_test ./ (60*60) .≤ 1),
-                    "12_hr" => findall(ts_x_test ./ (60*60) .≤ 12),
-                    "1_day" => findall(ts_x_test ./ (60*60) .≤ 24),
-                    "2_day" => findall(ts_x_test ./ (60*60) .≤ 2*24),
-                    "3_day" => findall(ts_x_test ./ (60*60) .≤ 3*24),
-                    "4_day" => findall(ts_x_test ./ (60*60) .≤ 4*24),
-                    "5_day" => findall(ts_x_test ./ (60*60) .≤ 5*24),
-                    "6_day" => findall(ts_x_test ./ (60*60) .≤ 6*24),
-                    "7_day" => findall(ts_x_test ./ (60*60) .≤ 7*24),
-                )
+    durations = Dict(
+        "1_hr"  => findall(ts_x ./ (60*60) .≤ 1),
+        "12_hr" => findall(ts_x ./ (60*60) .≤ 12),
+        "1_day" => findall(ts_x ./ (60*60) .≤ 24),
+        "2_day" => findall(ts_x ./ (60*60) .≤ 2*24),
+        "3_day" => findall(ts_x ./ (60*60) .≤ 3*24),
+        "4_day" => findall(ts_x ./ (60*60) .≤ 4*24),
+        "5_day" => findall(ts_x ./ (60*60) .≤ 5*24),
+        "6_day" => findall(ts_x ./ (60*60) .≤ 6*24),
+        "7_day" => findall(ts_x ./ (60*60) .≤ 7*24),
+        "10_day" => findall(ts_x ./ (60*60) .≤ 10*24),
+    )
 
+    res_df = DataFrame()
+    res_df.n_embedding = [n_embedding]
+    res_df.r_model = [r_model]
+    res_df.n_control = [n_control]
 
-
-                for (dur, idxs) in durations
-                    push!(eval_res, Dict(
-                        "n_embedding" => n_embedding,
-                        "r_model" => r_model,
-                        "n_control" => n_control,
-                        "duration" => dur,
-                        "mae" => mean_absolute_error(Ẑs_x[idxs], Zs_x[idxs]),
-                        "rmse" => rmse(Ẑs_x[idxs], Zs_x[idxs]),
-                        "mae_test" => mean_absolute_error(Ẑs_x_test[durations_test[dur]], Zs_x_test[durations_test[dur]]),
-                        "rmse_test" => rmse(Ẑs_x_test[durations_test[dur]], Zs_x_test[durations_test[dur]]),
-                    ))
-                end
-            end
-        end
+    for (dur, idxs) in durations
+        res_df[:,"mae_"*dur] = [mean_absolute_error(Ẑs_x[idxs], Zs_x[idxs])]
+        res_df[:,"rmse_"*dur] = [rmse(Ẑs_x[idxs], Zs_x[idxs])]
     end
+
+    push!(eval_res, res_df)
 end
 
 
 
+
+
+
+
 # turn into CSV and save to output
-df_res = DataFrame(eval_res)
+# df_res = DataFrame(eval_res)
+df_res = vcat(eval_res...)
+df_sort = sort(df_res, :rmse_10_day)[:, [:n_embedding, :r_model, :n_control, :rmse_10_day, :mae_10_day]]
+
+# Row │ n_embedding  r_model  n_control  rmse_10_day  mae_10_day 
+# ──────┼──────────────────────────────────────────────────────────
+# 1 │          45       11         10     0.249638    0.199078
+# 2 │          75       17         11     0.326801    0.258223
+# 3 │          75       23         14     0.32749     0.260647
+# 4 │          75       23         13     0.3275      0.260655
+# 5 │          75       23         15     0.327513    0.260668
+# 6 │          75       25         15     0.33929     0.270394
+# 7 │          75       25         14     0.341107    0.271865
+# 8 │          75       25         12     0.341645    0.272309
+# 9 │          75       25         11     0.341654    0.272317
+# 10 │          75       25         13     0.341716    0.272369
+
+
+df_sort = sort(df_res[df_res.n_control .== 1,:], :rmse_10_day)[:, [:n_embedding, :r_model, :n_control, :rmse_10_day, :mae_10_day]]
+
+# Row │ n_embedding  r_model  n_control  rmse_10_day  mae_10_day 
+# ─────┼──────────────────────────────────────────────────────────
+# 1 │          90       11          1     0.779965    0.612343
+# 2 │          45        3          1     0.798096    0.6352
+# 3 │          75        7          1     0.803061    0.64456
+# 4 │          60        3          1     0.929936    0.732968
+# 5 │          90        5          1     0.974242    0.807959
+# 6 │         105        9          1     0.991745    0.777937
+# 7 │          60        5          1     1.17818     0.946626
+# 8 │          30        3          1     1.19414     0.986072
+# 9 │          75       17          1     1.19866     0.982219
+# 10 │         105       13          1     1.21488     0.978601
+
+
 CSV.write(joinpath(outpath, "param_sweep.csv"), df_res)
 
 
-names(df_res)
-unique(df_res.duration)
+n_embedding = 45
+r_model = 11
+n_control = 10
 
-dur = "1_hr"
-# 10, 8, 60, 0.0269521, 0.0218609
-dur = "12_hr"
-# 9, 7, 45, 0.0554915, 0.0444288
-dur = "1_day"
-# 9, 6, 45, 0.0614532, 0.0509694
-dur = "7_day"
-# 1 │  17  9  90  0.110704  0.0829216
-# 2 │  7   5  30  0.12793   0.104335
-
-# top 10 for 7-day duration
-df_res_save = sort(df_res[df_res.duration .== dur, [:r_model, :n_control, :n_embedding, :rmse, :mae, :rmse_test, :mae_test]], :rmse_test)
-#  Row │ r_model  n_control  n_embedding  rmse      mae       rmse_test  mae_test
-# ─────┼──────────────────────────────────────────────────────────────────────────
-#    1 │       5          1           90  0.69374   0.519694   0.34359   0.248016
-#    2 │       3          1          105  0.596913  0.476902   0.414107  0.357375
-#    3 │       7          1           75  0.872991  0.656892   0.418226  0.294351
-#    4 │       7          1          165  0.675007  0.534755   0.42454   0.352469
-#    5 │      11          1          225  0.74136   0.571113   0.434222  0.355576
-#    6 │       3          1          120  0.650224  0.518801   0.458215  0.393815
-#    7 │      15          1          285  0.792881  0.625431   0.490585  0.407592
-#    8 │       3          1          135  0.742725  0.597471   0.520294  0.439779
-#    9 │       9          1          150  1.04634   0.793588   0.546441  0.408603
-#   10 │       5          1          180  0.799583  0.652497   0.549585  0.478401
-
-CSV.write(joinpath(outpath, "param_sweep_sorted.csv"), df_res_save)
+Zs_x, Ẑs_x, ts_x, U, σ, _, A, B, _ = eval_havok(Zs_train, ts_train, n_embedding, r_model, n_control)
 
 
 
-# visualize the results for the final model:
-n_embedding = 90
-r_model = 5
-n_control = 1
-r = r_model + n_control
+fig = Figure();
+ax = Axis(fig[1,1]);
+lines!(ax, ts_x ./ (24*60*60), Zs_x)
+lines!(ax, ts_x ./ (24*60*60), Ẑs_x)
+#ylims!(ax, 0, 50)
+fig
+
+Zs_x, Ẑs_x, ts_x = integrate_havok(Zs_test, ts_test, n_embedding, r_model, n_control, A, B, U, σ)
+ts_x = ts_x .- ts_x[1]
+
+fig = Figure();
+ax = Axis(fig[1,1]);
+lines!(ax, ts_x ./ (24*60*60), Zs_x)
+lines!(ax, ts_x ./ (24*60*60), Ẑs_x)
+#ylims!(ax, 0, 50)
+fig
+
 
 # compute SVD and visualize singular values
 H = Hankel(Zs, n_embedding)
@@ -227,75 +240,20 @@ xlims!(ax, 0.5, 10.5)
 ylims!(ax, -0.01, nothing)
 fig
 
+
 save(joinpath(figpath, "1__pca-explained-variance.pdf"), fig)
 
 
-# test out the HAVOK code
-Zs_x, Ẑs_x, ts_x, U, σ, V, A, B, fvals = eval_havok(Zs, ts, n_embedding, r_model, n_control)
+# Compare forcing functions to see if they linearly related...
 
-# visualize the final learned operators:
-cmap = cgrad([mints_colors[3], colorant"#FFFFFF", mints_colors[2]], 100)
-crange = (-0.001, 0.001)
+# H = Hankel(Zs_train, n_embedding)
+# V = H'*U*Diagonal(1 ./ σ)
 
-fig = Figure();
-gl = fig[1,1:2] = GridLayout()
-ax1 = Axis(gl[1,1];
-           yreversed=true,
-           title="A",                  titlesize=25,             titlefont=:regular,
-           xticklabelsvisible=false,   xticksvisible=false,
-           xgridvisible=false,         xminorgridvisible=false,
-           yticklabelsvisible=false,   yticksvisible=false,
-           ygridvisible=false,         yminorgridvisible=false,
-           )
-
-ax2 = Axis(gl[1,2];
-           yreversed=true,
-           title="B",                  titlesize=25,             titlefont=:regular,
-           xticklabelsvisible=false,   xticksvisible=false,
-           xgridvisible=false,         xminorgridvisible=false,
-           yticklabelsvisible=false,   yticksvisible=false,
-           ygridvisible=false,         yminorgridvisible=false,
-           )
-
-h1 = heatmap!(ax1, A', colormap=cmap, colorrange=crange, lowclip=mints_colors[3], highclip=mints_colors[2])
-h2 = heatmap!(ax2, B', colormap=cmap, colorrange=crange, lowclip=mints_colors[3], highclip=mints_colors[2])
-
-colsize!(gl, 2, Relative(n_control/r))
-cb = Colorbar(fig[1,3], colorrange=crange, colormap=cmap, lowclip=mints_colors[3], highclip=mints_colors[2], ticks=range(crange[1], stop=crange[end], length=5))
-
-fig
-
-save(joinpath(figpath, "2__A-B-Havok.pdf"), fig)
-
-# visualize the fitted time series
-c_dgray = colorant"#3d3d3d"
-c_dgray = colorant"#737373"
-fig = Figure();
-ax = Axis(fig[2,1],
-          xlabel="time (days since $(Date(dt_start)))",
-          ylabel="PM 2.5 (μg/m³)",
-          xticks=(0:1:15),
-          yticks=(0:5:50),
-          xminorgridvisible=true,
-          yminorgridvisible=true,
-          );
-
-text!(fig.scene, 0.1, 0.93, text="Training Data", space=:relative, fontsize=15)
-
-lorig= lines!(ax, ts_x ./ (24*60*60), Zs_x, color=c_dgray, linewidth=2)
-lhavok= lines!(ax, ts_x ./ (24*60*60), Ẑs_x, color=mints_colors[3], alpha=0.65, linewidth=1)
-xlims!(ax, ts_x[1] / (24*60*60), ts_x[end] / (24*60*60))
-ylims!(ax, 0, nothing)
-fig[1,1] = Legend(fig, [lorig, lhavok], ["Original", "HAVOK"], framevisible=false, orientation=:horizontal, padding=(0,0,-18,0), labelsize=14, height=-5, halign=:right)
-fig
-
-save(joinpath(figpath, "3__predicted-ts-training.pdf"), fig)
+# fig = Figure();
+# ax = Axis(fig[1,1]);
+# scatter!(ax, V[:, r_model+1], V[:, r_model+2])
+# fig
 
 
-# integrate on test-set  and visualize
-
-
-# plot model-performance on test set (rmse and mae) (we can decide on the length of integration to use here, e.g. 1day, 7days, etc...)
-# versus number of days used in training set.
 
 

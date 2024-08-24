@@ -1,4 +1,5 @@
-.get-sensor-data.jl
+.get-sensor-data-old.jl
+.get-data.jl
 .credentials.json
 .DS_Store
 data/valo-node-01-df.csv
