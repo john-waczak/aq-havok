@@ -26,8 +26,9 @@ end
 
 
 readdir("./data")
-datapath = "./data/df-central-hub-9.csv"
-datapath = "./data/df-valo-node-01.csv"
+# datapath = "./data/df-central-hub-9.csv"
+#datapath = "./data/df-valo-node-01.csv"
+datapath = "./data/df-central-hub-4.csv"
 
 
 
@@ -54,6 +55,7 @@ ax = Axis(fig[1,1],
           ylabel="PM 2.5 (μg/m³)",
           #xticks=(0:1:100),
           #yticks=(0:5:55),
+          xticks=(0:1:11),
           xminorgridvisible=true,
           yminorgridvisible=true,
           );
@@ -66,8 +68,9 @@ save(joinpath(figpath, "1__timeseries-full-short.pdf"), fig)
 
 
 # so split the final set int t_days .≥ 40 for the testing set...
-idx_train = findall(t_days  .≤ 7)
-idx_test = findall(t_days .> 7 .&& t_days .≤ 10)
+idx_train = findall(t_days  .≤ 8)
+#idx_test = findall(t_days .> 7 .&& t_days .≤ 10)
+idx_test = findall(t_days .> 8)
 
 Zs_train = Zs[idx_train]
 ts_train = ts[idx_train]
@@ -102,10 +105,14 @@ save(joinpath(figpath, "1b__train-test-timeseries-short.pdf"), fig)
 # n_embeddings = 100:10:350
 # rs_model = 5:25
 # ns_control = 1:5
-n_embeddings = 15:15:(4*60)
+
+# n_embeddings = 15:15:(4*60)
+# rs_model = 3:25
+# ns_control = 1:5
+
+n_embeddings = 30:15:(4*60)
 rs_model = 3:25
 ns_control = 1:5
-
 
 triples = [(n_emb, r_mod, n_con) for n_emb ∈ n_embeddings for r_mod ∈ rs_model for n_con ∈ ns_control if n_con < r_mod && r_mod+n_con < n_emb]
 
@@ -148,41 +155,40 @@ end
 df_res = vcat(eval_res...)
 df_sort = sort(df_res, :rmse_full)[:, [:n_embedding, :r_model, :n_control, :rmse_full, :mae_full]]
 
-# Row │ n_embedding  r_model  n_control  rmse_full  mae_full
+# Row │ n_embedding  r_model  n_control  rmse_full  mae_full 
 # ──────┼──────────────────────────────────────────────────────
-# 1 │          30        7          5   0.128843  0.105157
-# 2 │          30        7          4   0.131266  0.107121
-# 3 │          60       13          5   0.15026   0.122674
-# 4 │          30        5          4   0.163963  0.130775
-# 5 │          30        6          5   0.177243  0.137246
-# 6 │          75       15          5   0.194886  0.148422
-# 7 │          15        5          4   0.232016  0.180081
-# 8 │          15        5          3   0.236674  0.182818
-# 9 │          15        5          2   0.238591  0.184337
-# 10 │          60       11          5   0.256239  0.194025
+# 1 │          30        6          5   0.216703  0.155912
+# 2 │          45       10          5   0.3649    0.268842
+# 3 │          30        6          4   0.472797  0.397746
+# 4 │          45        8          5   0.487448  0.358938
+# 5 │          30        7          5   0.583654  0.518485
+# 6 │          30        8          5   0.58551   0.428986
+# 7 │          30        7          4   0.586575  0.520145
+# 8 │          30        8          4   0.610296  0.447673
+# 9 │          30        8          3   0.620928  0.455369
+# 10 │          60       12          5   0.697797  0.507499
 
 
 df_sort = sort(df_res[df_res.n_control .== 1,:], :rmse_full)[:, [:n_embedding, :r_model, :n_control, :rmse_full, :mae_full]]
 
 # Row │ n_embedding  r_model  n_control  rmse_full  mae_full
 # ─────┼──────────────────────────────────────────────────────
-# 1 │         105        3          1   0.59691   0.476901
-# 2 │         120        3          1   0.650222  0.518801
-# 3 │         165        7          1   0.675003  0.534752
-# 4 │          90        5          1   0.693735  0.519691
-# 5 │         225       11          1   0.741354  0.571105
-# 6 │         135        3          1   0.742726  0.597475
-# 7 │         180        5          1   0.799587  0.652503
-# 8 │         195        5          1   0.801469  0.651533
-# 9 │         150        3          1   0.840457  0.67922
-# 10 │         210        5          1   0.854661  0.691292
-
+# 1 │         105        3          1    1.48989   1.09792
+# 2 │         120        3          1    1.58473   1.1494
+# 3 │         180        5          1    1.77659   1.29506
+# 4 │         195        5          1    1.79877   1.29451
+# 5 │         135        3          1    1.85822   1.34174
+# 6 │         210        5          1    1.9252    1.39189
+# 7 │         150        3          1    2.05362   1.49678
+# 8 │         225        5          1    2.1544    1.5427
+# 9 │          30        8          1    2.24174   1.66401
+# 10 │         165        3          1    2.30244   1.67964
 
 CSV.write(joinpath(outpath, "param_sweep.csv"), df_res)
 
 
 n_embedding = 30
-r_model = 7
+r_model = 6
 n_control = 5
 Zs_x, Ẑs_x, ts_x, U, σ, _, A, B, fvals = eval_havok(Zs_train, ts_train, n_embedding, r_model, n_control)
 
