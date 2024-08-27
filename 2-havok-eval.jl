@@ -27,7 +27,7 @@ sort(df_params, :rmse_full)[:, [:n_embedding, :r_model, :n_control, :rmse_full, 
 
 
 # Load in data
-datapath = "./data/df-central-hub-4.csv"
+datapath = "./data/data.csv"
 
 df = CSV.read(datapath, DataFrame);
 df.datetime .= ZonedDateTime.(String.(df.datetime));
@@ -306,5 +306,26 @@ fig
 save(joinpath(figpath, "6__timeseries-with-forcing.pdf"), fig)
 
 
+
+
+# create training set for forcing function predictions.
+using JSON
+
+out_dict = Dict()
+
+out_dict["A"] = A
+out_dict["B"] = B
+out_dict["U"] = U
+out_dict["σ"] = σ
+out_dict["Zs"] = Zs
+out_dict["ts"] = ts
+out_dict["t_days"] = t_days
+out_dict["d_start"] = d_start
+out_dict["idx_train"]  = collect(idx_train)
+out_dict["idx_test"]  = collect(idx_test)
+
+open("./data/fitres.json", "w") do f
+    JSON.print(f, out_dict)
+end
 
 
