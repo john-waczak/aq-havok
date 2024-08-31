@@ -4,6 +4,7 @@ using Statistics, StatsBase, Distributions, KernelDensity
 using CSV, DataFrames
 using Dates, TimeZones
 using ProgressMeter
+using JSON
 
 include("./makie-defaults.jl")
 set_theme!(mints_theme)
@@ -309,7 +310,6 @@ save(joinpath(figpath, "6__timeseries-with-forcing.pdf"), fig)
 
 
 # create training set for forcing function predictions.
-using JSON
 
 out_dict = Dict()
 

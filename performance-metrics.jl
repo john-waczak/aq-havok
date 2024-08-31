@@ -9,6 +9,8 @@ normalized_mae(ŷ, y) = sum(abs.(ŷ .- y)) / sum(y)
 rmse(ŷ, y) = sqrt(mean(abs2.(ŷ .- y)))
 corr_coef(ŷ, y) = cor(ŷ, y)
 
+mape(ŷ,y) = mean(abs.(abs.(ŷ-y)./y))
+
 function coefficient_of_efficiency(ŷ, y)
     μ_o = mean(y)
     return 1.0 - sum(abs.(ŷ .- y))/sum(abs.(y .- μ_o))
