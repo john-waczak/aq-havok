@@ -440,7 +440,72 @@ end
 
 
 
-function forecast_havok(Zs, ts, n_embedding, r_model, n_control, A, B, U, σ, K)
+# function forecast_havok(Zs, ts, n_embedding, r_model, n_control, A, B, U, σ, K)
+#     dt = ts[2]-ts[1]
+#     r = r_model + n_control
+
+#     # set up outgoing array for time series predictions
+#     Zs_out = Zs[n_embedding:end]
+#     Ẑs_out = zeros(length(Zs[n_embedding:end]))
+#     ts_out = range(ts[n_embedding], step=dt, length=length(Zs_out))
+
+#     # current time series embedding
+#     Zvec = Zs[1:n_embedding]
+
+#     # get first embedding vector for time delay
+#     V_0 = Diagonal(1 ./ σ)*U'*Zs[1:n_embedding]
+
+#     # split into initial state and forcing vectors
+#     vnow = V_0[1:r_model]
+#     fnow = V_0[r_model+1:r]
+
+#     fnext_true = (Diagonal(1 ./ σ)*U'*Zs[2:n_embedding+1])[r_model+1:r]
+
+#     # construct exponential matrices for time evolution
+#     expA, expB = make_expM_const(A, B, dt, r_model, n_control)
+
+#     # set up vectors for predicted values
+#     vnext = similar(vnow);      # for updating state
+#     fnext= similar(fnow);      # for updating forcing
+
+#     # pre-compute this for re-use
+#     σu = σ[1:r_model] .* U[end,1:r_model]
+#     # invΣUt = Diagonal(1 ./ σ[r_model+1:r]) * U[:, r_model+1:r]'
+
+#     # compute time evolution
+#     for i ∈ 1:length(Zs_out)
+
+#         # i=1
+
+#         # integrate state forward
+#         step_const!(vnext, vnow, fnow, expA, expB)
+
+#         # update the state
+#         # vnext .= vnow
+#         vnow .= vnext
+
+#         # convert state back to time series value
+#         znext = dot(σu, vnext)
+#         Ẑs_out[i] = znext
+
+#         Ẑs_out[1]
+#         Zs_out[1]
+
+#         # use K to update forcing
+#         fnext = K*vcat(fnow, znext, Zvec)
+#         fnow = fnext
+
+
+#         # update embedding vector
+#         Zvec[1:end-1] .= Zvec[2:end]
+#         Zvec[end] = znext
+#     end
+
+#     return Zs_out, Ẑs_out, ts_out
+# end
+
+
+function forecast_havok(Zs, ts, n_embedding, r_model, n_control, A, B, U, σ)
     dt = ts[2]-ts[1]
     r = r_model + n_control
 
@@ -459,8 +524,6 @@ function forecast_havok(Zs, ts, n_embedding, r_model, n_control, A, B, U, σ, K)
     vnow = V_0[1:r_model]
     fnow = V_0[r_model+1:r]
 
-    fnext_true = (Diagonal(1 ./ σ)*U'*Zs[2:n_embedding+1])[r_model+1:r]
-
     # construct exponential matrices for time evolution
     expA, expB = make_expM_const(A, B, dt, r_model, n_control)
 
@@ -470,7 +533,7 @@ function forecast_havok(Zs, ts, n_embedding, r_model, n_control, A, B, U, σ, K)
 
     # pre-compute this for re-use
     σu = σ[1:r_model] .* U[end,1:r_model]
-    # invΣUt = Diagonal(1 ./ σ[r_model+1:r]) * U[:, r_model+1:r]'
+    invΣUt = Diagonal(1 ./ σ[r_model+1:end]) * U[:, r_model+1:end]'
 
     # compute time evolution
     for i ∈ 1:length(Zs_out)
@@ -488,20 +551,30 @@ function forecast_havok(Zs, ts, n_embedding, r_model, n_control, A, B, U, σ, K)
         znext = dot(σu, vnext)
         Ẑs_out[i] = znext
 
-        Ẑs_out[1]
-        Zs_out[1]
-
-        # use K to update forcing
-        fnext = K*vcat(fnow, znext, Zvec)
-        fnow = fnext
-
-
         # update embedding vector
         Zvec[1:end-1] .= Zvec[2:end]
         Zvec[end] = znext
+
+        # update forcing
+        fnext = invΣUt*Zvec
+        fnow = fnext
+
+        # Ẑs_out[1]
+        # Zs_out[1]
+
+        # # use K to update forcing
+        # fnext = K*vcat(fnow, znext, Zvec)
+        # fnow = fnext
+
+
+        # # update embedding vector
+        # Zvec[1:end-1] .= Zvec[2:end]
+        # Zvec[end] = znext
+
     end
 
     return Zs_out, Ẑs_out, ts_out
 end
+
 
 

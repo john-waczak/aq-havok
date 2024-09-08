@@ -76,6 +76,17 @@ Zs_x_test, Ẑs_x_test, ts_x_test = integrate_havok(Zs_test, ts_test, n_embeddin
 fvals_test = (Hankel(Zs_test, n_embedding)'*U*Diagonal(1 ./ σ))[:, r_model+1:r]
 
 
+Σ = Diagonal(σ)
+invΣ = Diagonal( 1 ./ σ)
+
+
+#
+rmse((invΣ * U' * Hankel(Zs_train, n_embedding))[r_model+1:end, :], fvals')  # 0
+rmse(Diagonal(1 ./ σ[r_model+1:end]) * U[:, r_model+1:end]'*Hankel(Zs_train, n_embedding), fvals')
+
+
+
+
 fig = Figure();
 ax = Axis(fig[1,1]);
 lines!(ax, ts_x, Zs_x)
@@ -101,45 +112,45 @@ rmse(f̂next, fnext)
 
 
 # now lets check by integrating the model forward
-f̂chained = zeros(size(fnext))
+# f̂chained = zeros(size(fnext))
 
-Zvec = Hankel(Zs_train, n_embedding)
-Zvec_now = Zvec[:, 1:end-1]
-z_next = Zvec[end,2:end]
-fnow = fvals[1,:]
-i_start = 1
+# Zvec = Hankel(Zs_train, n_embedding)
+# Zvec_now = Zvec[:, 1:end-1]
+# z_next = Zvec[end,2:end]
+# fnow = fvals[1,:]
+# i_start = 1
 
-for i ∈ i_start:size(f̂chained,1)
-    # predict next value
-    # i = 1
-    Zvec = Zvec_now[:,i]
-    znext = z_next[i]
+# for i ∈ i_start:size(f̂chained,1)
+#     # predict next value
+#     # i = 1
+#     Zvec = Zvec_now[:,i]
+#     znext = z_next[i]
 
-    size(K)
+#     size(K)
 
-    size(fnow)
-    size(znext)
-    size(Zvec)
+#     size(fnow)
+#     size(znext)
+#     size(Zvec)
 
-    fpred = K*vcat(fnow, znext, Zvec)
+#     fpred = K*vcat(fnow, znext, Zvec)
 
-    # update predicted time series
-    f̂chained[i,:] .= fpred
+#     # update predicted time series
+#     f̂chained[i,:] .= fpred
 
-    # update fnow
-    fnow .= fpred
-end
+#     # update fnow
+#     fnow .= fpred
+# end
 
-rmse(f̂chained, fnext)
+# rmse(f̂chained, fnext)
 
-size(fnext)
+# size(fnext)
 
-fig = Figure();
-ax = Axis(fig[1,1]);
-lines!(ax, 1:size(fnext,1), fnext[:,1])
-lines!(ax, 1:size(fnext,1), f̂chained[:,1])
-xlims!(ax, 1, 50_000)
-fig
+# fig = Figure();
+# ax = Axis(fig[1,1]);
+# lines!(ax, 1:size(fnext,1), fnext[:,1])
+# lines!(ax, 1:size(fnext,1), f̂chained[:,1])
+# xlims!(ax, 1, 50_000)
+# fig
 
 
 # too good to be true?
